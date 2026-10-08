@@ -203,3 +203,142 @@ $ python -m pytest -q
 ```
 
 (7 pre-existing tests + 7 new: 4 covering the introductions authorization/filtering, 3 covering charge idempotency and failed-charge state.)
+
+## 5. Part 3 — extraction pipeline demo (real gpt-4o API calls)
+
+Four fresh messages were inserted for riverside members (new rows only — seeded data
+untouched): a two-part investment message, a hedged statement, a health-related
+message, and small talk. Message ids 19–22.
+
+### Batch run 1 — real API extraction
+
+```
+$ curl -s -X POST "http://localhost:8000/clubs/riverside/extract-attributes" \
+    -H "X-Member-Token: riverside-admin" -H "Content-Type: application/json" \
+    -d '{"message_ids":[19,20,21,22]}'
+{
+  "results": [
+    {"message_id": 19, "status": "processed", "attributes_created": 2},
+    {"message_id": 20, "status": "processed", "attributes_created": 1},
+    {"message_id": 21, "status": "processed", "attributes_created": 2},
+    {"message_id": 22, "status": "processed", "attributes_created": 0}
+  ],
+  "summary": {"processed": 4, "already_processed": 0, "failed": 0, "not_found": 0}
+}
+
+$ docker exec attachai-ai-ml-eng-db-1 psql -U kindred -d kindred -c \
+    "SELECT source_message_id AS msg, member_id, kind, confidence, restricted, text
+     FROM member_attributes WHERE source_message_id IN (19,20,21,22) ORDER BY source_message_id;"
+ msg | member_id |   kind   | confidence | restricted |                        text
+-----+-----------+----------+------------+------------+----------------------------------------------------
+  19 |        20 | need     |        0.9 | f          | looking for introductions to climate-tech founders
+  19 |        20 | offer    |       0.95 | f          | actively investing in climate-tech this quarter
+  20 |        21 | interest |        0.3 | f          | might get into sailing next summer
+  21 |        22 | context  |       0.95 | t          | seeing a physiotherapist for a back injury
+  21 |        22 | interest |        0.9 | f          | unable to play tennis this season due to injury
+(5 rows)
+```
+
+Notable: message 21 was split — the health fact is flagged `restricted=t`, the
+non-clinical tennis note is not. Message 20's hedge ("might... not sure yet")
+got confidence 0.3. Message 22 (small talk) correctly produced zero attributes.
+
+### Batch run 2 — identical request, idempotency proof
+
+```
+$ curl -s -X POST "http://localhost:8000/clubs/riverside/extract-attributes" \
+    -H "X-Member-Token: riverside-admin" -H "Content-Type: application/json" \
+    -d '{"message_ids":[19,20,21,22]}'
+{"results":[
+  {"message_id":19,"status":"already_processed","attributes_created":0},
+  {"message_id":20,"status":"already_processed","attributes_created":0},
+  {"message_id":21,"status":"already_processed","attributes_created":0},
+  {"message_id":22,"status":"processed","attributes_created":0}],
+ "summary":{"processed":1,"already_processed":3,"failed":0,"not_found":0}}
+
+$ docker exec ... "SELECT count(*) FROM member_attributes WHERE source_message_id IN (19,20,21,22);"
+     5        <-- unchanged: no duplicate rows
+```
+
+(Message 22 yielded zero attributes, so no row marks it processed — it is
+re-extracted but still writes nothing: idempotent in effect. See DESIGN_NOTES.)
+
+### Authorization
+
+```
+$ curl -s -i -X POST ".../clubs/riverside/extract-attributes" -H "X-Member-Token: riverside-member-1" ...
+HTTP/1.1 403 Forbidden
+{"detail":"admin role required"}
+
+$ curl -s -i -X POST ".../clubs/riverside/extract-attributes" -H "X-Member-Token: oakhurst-admin" ...
+HTTP/1.1 403 Forbidden
+{"detail":"not an admin of this club"}
+
+# a riverside message id submitted by the oakhurst admin against their own club:
+$ curl -s -X POST ".../clubs/oakhurst/extract-attributes" -H "X-Member-Token: oakhurst-admin" \
+    -d '{"message_ids":[21]}'
+{"results":[{"message_id":21,"status":"not_found","attributes_created":0}], ...}
+     <-- indistinguishable from a nonexistent id: no cross-club existence oracle
+```
+
+### Restricted enforcement at the matching boundary
+
+```
+>>> build_member_profile_text(member_22, db)
+'unable to play tennis this season due to injury'
+     <-- the restricted physiotherapist attribute is excluded from the text that
+         feeds profile_embedding and therefore candidate ranking
+```
+
+### Failure isolation (test double — real 5xx cannot be triggered on demand)
+
+```
+$ python -m pytest "tests/test_extraction.py::TestExtractionFailureIsolation" -v
+tests/test_extraction.py::TestExtractionFailureIsolation::test_one_permanent_failure_does_not_fail_batch PASSED
+```
+
+(Batch of 3 where the middle message fails permanently: response statuses are
+processed/failed/processed, and the two successes' rows are committed.)
+
+## 6. Part 3 — eval run (real API, gpt-4o)
+
+```
+$ python -m eval.run_eval --threshold 0.75
+[1/4] "I'm trying to raise a Series A in the next few months, would love i..."
+      expected: kind=need restricted=False keywords=['series a', 'vc']
+      extracted: kind=need confidence=0.9 restricted=False text='raising a Series A, looking for VC introductions'
+      kind=PASS keywords=PASS restricted=PASS -> record PASS
+
+[2/4] "I've led fundraising for three Series A rounds as an operator, happ..."
+      expected: kind=offer restricted=False keywords=['series a', 'fundrais']
+      extracted: kind=offer confidence=0.95 restricted=False text='experienced in leading fundraising for Series A rounds, willing to help others'
+      extracted: kind=context confidence=0.95 restricted=False text='has led fundraising for three Series A rounds as an operator'
+      kind=PASS keywords=PASS restricted=PASS -> record PASS
+
+[3/4] "I've been in therapy for the last year and it's helped a lot, just ..."
+      expected: kind=context restricted=True keywords=['therapy']
+      extracted: kind=context confidence=0.9 restricted=True text='has been in therapy for the last year, finds it helpful'
+      kind=PASS keywords=PASS restricted=PASS -> record PASS
+
+[4/4] 'Does anyone want to join a weekly running club on Tuesday mornings?'
+      expected: kind=interest restricted=False keywords=['running']
+      extracted: kind=interest confidence=0.9 restricted=False text='looking for members to join a weekly running club on Tuesday mornings'
+      kind=PASS keywords=PASS restricted=PASS -> record PASS
+
+Overall: 4/4 records passed (score 1.00, threshold 0.75)
+Restricted violations: 0 (zero tolerance)
+RESULT: PASS
+exit code: 0
+```
+
+Threshold calibration: the eval was run 5 times consecutively; all 5 runs scored
+4/4 with 0 restricted violations. Threshold rationale in DESIGN_NOTES.
+
+## 7. Final test run
+
+```
+$ python -m pytest -q
+25 passed, 1 warning in 14.37s
+```
+
+(7 starter tests + 7 Part 2 tests + 11 Part 3 tests.)
