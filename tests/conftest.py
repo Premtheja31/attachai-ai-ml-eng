@@ -1,7 +1,7 @@
 import os
 
 os.environ.setdefault(
-    "DATABASE_URL", "postgresql+psycopg2://kindred:kindred@localhost:5432/kindred_test"
+    "DATABASE_URL", "postgresql+psycopg://kindred:kindred@localhost:5432/kindred_test"
 )
 
 import pytest
