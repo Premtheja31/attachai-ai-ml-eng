@@ -39,7 +39,7 @@ All of it runs with zero external API keys — `app/embeddings.py` is a determin
 
 ## Submission
 
-- **Screen recording (entire session, narrated):** _link pending upload — will be added here_
+- **Screen recording (entire session, narrated):** https://drive.google.com/file/d/1ZaVGyleK10LQY2hNguq-PT7rl1hZ73Qd/view?usp=sharing
 - Code review: [REVIEW.md](REVIEW.md) · Terminal evidence: [TERMINAL_LOG.md](TERMINAL_LOG.md) · Design reasoning: [DESIGN_NOTES.md](DESIGN_NOTES.md) · AI tool dialogue: [.ai-conversations/](.ai-conversations/)
 - Part 3 extraction pipeline: `POST /clubs/{club_id}/extract-attributes` (`app/custom_model/`, `app/services/extraction_service.py`, `app/routers/extraction.py`); eval: `python -m eval.run_eval --threshold 0.75`
 - Run the tests with `pytest` — 25 tests (7 starter + 7 Part 2 + 11 Part 3). Part 3's pipeline requires `OPENAI_API_KEY` in `.env`; tests do not (they use the provided test double).
