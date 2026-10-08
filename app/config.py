@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     llm_max_attempts: int = 3
     intro_confidence_threshold: float = 0.6
+    matching_confidence_threshold: float = 0.0
 
 
 settings = Settings()

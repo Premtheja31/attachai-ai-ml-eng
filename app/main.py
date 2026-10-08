@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.routers import bookings, introductions, knowledge, matching, sessions
+from app.routers import bookings, extraction, introductions, knowledge, matching, sessions
 
 app = FastAPI(title="Kindred Concierge (Assessment)")
 
@@ -9,6 +9,7 @@ app.include_router(matching.router)
 app.include_router(introductions.router)
 app.include_router(bookings.router)
 app.include_router(sessions.router)
+app.include_router(extraction.router)
 
 
 @app.get("/health")
