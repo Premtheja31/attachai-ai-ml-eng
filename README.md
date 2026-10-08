@@ -36,3 +36,10 @@ All of it runs with zero external API keys — `app/embeddings.py` is a determin
 - The mock payment client (`app/services/payment_mock.py`) always succeeds for a normal amount, always fails for `amount_cents <= 0`, and raises a simulated timeout (`PaymentTimeoutError`, surfaced as a 504) for `amount_cents: 999999`.
 - A session's `turn` payload accepts an optional `"simulate_crash": true` field, for your own testing.
 - `eval/golden_set.json` is a small labeled set of raw messages for the extraction pipeline's eval requirement (see the assignment brief, Part 3).
+
+## Submission
+
+- **Screen recording (entire session, narrated):** _link pending upload — will be added here_
+- Code review: [REVIEW.md](REVIEW.md) · Terminal evidence: [TERMINAL_LOG.md](TERMINAL_LOG.md) · Design reasoning: [DESIGN_NOTES.md](DESIGN_NOTES.md) · AI tool dialogue: [.ai-conversations/](.ai-conversations/)
+- Part 3 extraction pipeline: `POST /clubs/{club_id}/extract-attributes` (`app/custom_model/`, `app/services/extraction_service.py`, `app/routers/extraction.py`); eval: `python -m eval.run_eval --threshold 0.75`
+- Run the tests with `pytest` — 25 tests (7 starter + 7 Part 2 + 11 Part 3). Part 3's pipeline requires `OPENAI_API_KEY` in `.env`; tests do not (they use the provided test double).

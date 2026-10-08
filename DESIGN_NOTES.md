@@ -32,7 +32,9 @@ applied unconditionally in the attribute query (plus a configurable confidence f
 
 ## Closing question — what I deliberately did not do, and what I'd build next
 
-Deliberately skipped, in priority order of what I'd build with one more day:
+**Parts 4a/4b were deliberately skipped**: the timebox ran out as Part 3 wrapped, and the brief says bonuses are for time remaining — shipping Parts 1–3 complete (fixed, tested, demoed, documented) beat starting a bonus I couldn't finish properly. 4a would be first if I continued: the Part 2 introductions fix already built its skeleton (club authorization, restricted + confidence filtering, configurable threshold, "insufficient basis" response) — what remains is returning the audit list of attributes the reason drew from, a per-request threshold override, and optionally LLM-generating the reason text grounded on exactly those attributes.
+
+Beyond that, in priority order of what I'd build with one more day:
 
 1. **Async job execution for extraction.** The endpoint is synchronous-sequential by choice: job state needs persistence ("no new tables" rules that out here), concurrent fan-out to OpenAI causes the very 429s the retry strategy then fights (thundering herd), and FastAPI runs sync endpoints in a threadpool so the server isn't blocked — only the caller waits. At real WhatsApp-ingest scale that tradeoff flips: day one I'd make `POST /extract-attributes` return `202` with a job id backed by a jobs table and a worker pulling from a queue, with per-message status transitions replacing the in-response statuses.
 2. **Fixing the remaining reviewed-but-unfixed payment bugs** — client-controlled `amount_cents` in `confirm-payment` (REVIEW.md #3) and its missing idempotency/status guard (#4). I fixed the two highest-impact issues end-to-end rather than five issues shallowly; #3 is a three-line fix but deserved its own before/after trace I didn't have time to record.
