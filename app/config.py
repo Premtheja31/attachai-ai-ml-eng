@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     embed_dim: int = 16
     payment_timeout_trigger_cents: int = 999999
     openai_api_key: str = ""
+    intro_confidence_threshold: float = 0.6
 
 
 settings = Settings()
