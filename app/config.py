@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://kindred:kindred@localhost:5432/kindred"
     embed_dim: int = 16
     payment_timeout_trigger_cents: int = 999999
+    openai_api_key: str = ""
 
 
 settings = Settings()
