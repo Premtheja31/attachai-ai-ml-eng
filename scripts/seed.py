@@ -1,6 +1,15 @@
 from app.db import SessionLocal
 from app.embeddings import embedding_client
-from app.models import Booking, Club, ConversationMessage, KnowledgeChunk, Member, MemberAttribute, PaymentAttempt
+from app.models import (
+    Booking,
+    Club,
+    ConversationMessage,
+    ConversationSession,
+    KnowledgeChunk,
+    Member,
+    MemberAttribute,
+    PaymentAttempt,
+)
 from app.services.matching_service import build_member_profile_text
 from scripts.init_db import init_db
 
@@ -49,7 +58,7 @@ def seed() -> None:
     init_db()
     db = SessionLocal()
 
-    for model in [PaymentAttempt, Booking, MemberAttribute, ConversationMessage, KnowledgeChunk, Member, Club]:
+    for model in [ConversationSession, PaymentAttempt, Booking, MemberAttribute, ConversationMessage, KnowledgeChunk, Member, Club]:
         db.query(model).delete()
     db.commit()
 

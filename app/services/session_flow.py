@@ -29,29 +29,65 @@ def advance_turn(session: ConversationSession, intent: str, payload: dict, db: D
         }
 
     if intent == "affirm" and session.awaiting_confirmation:
-        amount_cents = payload.get("amount_cents", 0)
+        booking = None
+        prior_attempts: list[PaymentAttempt] = []
+        if session.booking_id is not None:
+            booking = db.get(Booking, session.booking_id)
+            prior_attempts = (
+                db.query(PaymentAttempt)
+                .filter(PaymentAttempt.booking_id == session.booking_id)
+                .order_by(PaymentAttempt.id)
+                .all()
+            )
 
-        # No check here for a prior successful charge on this session, and
-        # nothing is persisted before the charge happens.
-        result = payment_mock_client.charge(amount_cents)
+        if any(a.status == "succeeded" for a in prior_attempts):
+            # A charge already went through on an earlier turn — never re-charge.
+            booking.status = "confirmed"
+            session.status = "confirmed"
+            session.awaiting_confirmation = False
+            db.commit()
+            return {"status": "confirmed", "booking_id": booking.id}
+
+        attempt = next((a for a in prior_attempts if a.status == "pending"), None)
+        if attempt is None:
+            amount_cents = payload.get("amount_cents", 0)
+            if booking is None:
+                booking = Booking(
+                    member_id=session.member_id,
+                    club_id=session.club_id,
+                    description="Session-confirmed booking",
+                    amount_cents=amount_cents,
+                    status="pending",
+                )
+                db.add(booking)
+                db.flush()
+                session.booking_id = booking.id
+            attempt = PaymentAttempt(
+                booking_id=booking.id,
+                idempotency_key=f"session-{session.id}-attempt-{len(prior_attempts) + 1}",
+                amount_cents=amount_cents,
+                status="pending",
+            )
+            db.add(attempt)
+            # Commit the in-flight attempt BEFORE calling the provider: if the
+            # process dies after the charge, the retry finds this pending
+            # attempt and replays the same idempotency key instead of
+            # charging the member a second time.
+            db.commit()
+
+        result = payment_mock_client.charge(attempt.amount_cents, idempotency_key=attempt.idempotency_key)
 
         if payload.get("simulate_crash"):
             raise SimulatedCrash("process died after the charge, before the session/booking were saved")
 
-        booking = Booking(
-            member_id=session.member_id,
-            club_id=session.club_id,
-            description="Session-confirmed booking",
-            amount_cents=amount_cents,
-            status="confirmed" if result.status == "succeeded" else "pending",
-        )
-        db.add(booking)
-        db.flush()
-        db.add(PaymentAttempt(booking_id=booking.id, amount_cents=amount_cents, status=result.status))
-        session.booking_id = booking.id
-        session.status = "confirmed"
-        session.awaiting_confirmation = False
+        attempt.status = result.status
+        if result.status == "succeeded":
+            booking.status = "confirmed"
+            session.status = "confirmed"
+            session.awaiting_confirmation = False
+            db.commit()
+            return {"status": "confirmed", "booking_id": booking.id}
         db.commit()
-        return {"status": "confirmed", "booking_id": booking.id}
+        return {"status": "payment_failed", "booking_id": booking.id}
 
     return {"status": session.status}
